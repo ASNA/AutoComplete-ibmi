@@ -1,0 +1,98 @@
+﻿Using System
+Using System.Text
+Using System.Text.RegularExpressions
+Using System.Collections.Generic
+Using ASNA.JsonRestRouting
+
+BegClass CustomerAPIController Access(*Public) Extends(ASNA.JsonRestRouting.Controller)
+
+    DclDB DGDB DBName('*Public/Cypress')
+
+    DclConst DBNAME Value('*Public/Cypress')
+    DclConst LIBRARY Value('rpzimmie')
+    DclConst RPG_PROGRAM Value('cusearch')
+
+    DclConst QUERY_STRING_KEY Value('startswith')
+    DclConst ROWS_TO_RETURN Value(12)
+    DclConst COLUMN_SEPARATOR Value('^')
+    DclConst ROW_SEPARATOR Value('~')
+
+    BegFunc IndexAction Access(*Public) Type(List(*Of AjaxData)) 
+        DclFld AjaxList Type(List(*Of AjaxData))  
+
+        AjaxList = CallAutoSearchProvider(LIBRARY, +
+                                          RPG_PROGRAM, +
+                                          QUERY_STRING_KEY, +
+                                          ROWS_TO_RETURN) 		
+        LeaveSr AjaxList
+    EndFunc 
+
+    // After full refactoring and testing, these two routines can 
+    // be added to the ASNA.JsonRestRouting library.
+
+    BegFunc CallAutoSearchProvider Type(List(*Of AjaxData)) 
+        DclSrParm Library Type(*String)
+        DclSrParm RPGProgram Type(*String)
+        DclSrParm QueryStringKey Type(*String)
+        DclSrParm RowsToReturn Type(*Integer4) 
+
+        DclFld Filter Type(*Char) Len(60) 
+        DclFld List Type(*Char) Len(12000)
+        DclFld AjaxList Type(List(*Of AjaxData))  
+        DclFld LibraryProgram Type(*String) 
+
+        LibraryProgram = String.Format('{0}/{1}', Library, RPGProgram)
+        Filter = HTTP.Request['startswith'].ToString().Trim().ToLower()
+
+        Connect DGDB 
+
+        Call LibraryProgram DB(DGDB)
+        DclParm Filter
+        DclParm RowsToReturn
+        DclParm List 
+
+        Disconnect DGDB
+        AjaxList = Parse(List.Trim()) 
+
+        LeaveSr AjaxList      
+    EndFunc 
+
+    BegFunc Parse Type(List(*Of AjaxData)) 
+        DclSrParm StringIn Type(*String) 
+
+        DclFld Result Type(List(*Of AjaxData)) New() 
+        DclFld ad Type(AjaxData) 
+        DclFld RowCounter Type(*Integer4) 
+
+
+        DclArray ValuePairs Type(*String) Rank(1) 
+        DclArray Item Type(*String) Rank(1) 
+
+        ValuePairs = Regex.Split(StringIn, +
+                                 String.Format('\s*\{0}\s*', ROW_SEPARATOR))
+
+        If ValuePairs.Length > 0 
+            
+            RowCounter = 0
+            ForEach ValuePair Type(*String) Collection(ValuePairs) 
+                If RowCounter > 0
+                    Item = Regex.Split(ValuePair, +
+                                       String.Format('\s*\{0}\s*', COLUMN_SEPARATOR)) 
+                    ad = *New AjaxData()
+                    ad.text = Item[0]
+                    ad.value = Item[1]
+                    Result.Add(ad) 
+                EndIf
+                RowCounter += 1
+            EndFor 
+        EndIf 
+
+        LeaveSr Result
+    EndFunc 
+
+EndClass
+
+BegClass AjaxData Access(*Public) 
+    DclProp text Type(*String) Access(*Public)
+    DclProp value Type(*String) Access(*Public) 
+EndClass

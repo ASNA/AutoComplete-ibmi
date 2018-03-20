@@ -1,0 +1,128 @@
+        Ctl-Opt Option(*srcstmt) Dftactgrp(*No) ActGrp('rpmobile');
+
+        //
+        // RPG program to get a delimited list of text
+        // and values for an autocomplete feature.
+        //
+        // Version .92
+        //
+        // Copyright 2018 by ASNA. All rights reserved.
+        // This program is free to use by ASNA customers
+        // currently on an ASNA product maintenance plan. You
+        // may use this program in your commercial applications
+        // but please leave this notice intact.
+
+        // THIS SOFTWARE IS PROVIDED AS_IS AND IN NO EVENT SHALL
+        // ASNA BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT,
+        // SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+        // INCLUDING LOST PROFITS, ARISING OUT OF THE USE
+        // OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF
+        // ASNA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+        // ASNA SPECIFICALLY DISCLAIMS ANY WARRANTIES, INCLUDING,
+        // BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+        // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+        // THE SOFTWARE AND ACCOMPANYING DOCUMENTATION, IF ANY,
+        // PROVIDED HEREUNDER IS PROVIDED "AS IS." ASNA HAS NO
+        // OBLIGATION TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
+        // ENHANCEMENTS, OR MODIFICATIONS.
+        //
+
+        Dcl-C COLUMN_SEPARATOR Const('^');
+        Dcl-C ROW_SEPARATOR Const('~');
+        Dcl-C BUFFER_SIZE Const(12000);
+
+        Dcl-Pi *N;
+            Filter Char(60);
+            Rows Int(10);
+            List Char(BUFFER_SIZE);
+        End-Pi;
+
+        Dcl-S RowsReturned Int(10);
+
+        ConfigureSQL();
+        RowsReturned = OpenCursor(Filter);
+        List = ReadResults();
+        CloseCursor();
+
+        Return;
+
+        Dcl-Proc ConfigureSQL;
+            EXEC SQL
+                SET OPTION NAMING = *SYS;
+        End-Proc;
+
+        Dcl-Proc OpenCursor;
+            Dcl-Pi *N Int(10);
+                Filter Char(60);
+            End-Pi;
+
+            Dcl-S Pattern VarChar(60);
+            Dcl-S RowsFetched Int(10);
+
+            Pattern = %Trim(Filter);
+
+            EXEC SQL
+                DECLARE C_DOC CURSOR FOR
+                SELECT TRIM(cmname) as Text,
+                       cmcustno as Value
+                    FROM examples.cmastnewL2
+                    WHERE LCASE(cmname) >= :PATTERN
+                    ORDER BY cmname, cmcustno
+                    LIMIT :ROWS
+                    FOR READ ONLY;
+
+            EXEC SQL
+                OPEN C_DOC;
+
+            EXEC SQL
+                GET DIAGNOSTICS :RowsFetched = DB2_NUMBER_ROWS;
+
+            Return RowsFetched;
+        End-Proc;
+
+        Dcl-Proc ReadResults;
+            Dcl-Pi *N VarChar(BUFFER_SIZE);
+            End-Pi;
+
+            Dcl-S List VarChar(BUFFER_SIZE);
+            Dcl-S MoreRows Ind;
+            Dcl-S Text VarChar(100);
+            Dcl-S Value VarChar(50);
+
+            Dcl-C SUCCESS '00000';
+            Dcl-C END_OF_RESULT_SET '02000';
+
+            List = 'Text' +
+                   COLUMN_SEPARATOR +
+                   'Value' +
+                   ROW_SEPARATOR;
+
+            MoreRows = *On;
+            Dow MoreRows = *On;
+                EXEC SQL
+                    FETCH NEXT
+                        FROM C_DOC
+                        INTO :Text, :Value;
+
+                If SQLStt = SUCCESS;
+                    List += %TRIM(Text) +
+                            COLUMN_SEPARATOR +
+                            %TRIM(Value) +
+                            ROW_SEPARATOR;
+                EndIf;
+                If SQLStt = END_OF_RESULT_SET;
+                    MoreRows = *Off;
+                EndIf;
+            EndDo;
+
+            // Remove last semicolon.
+            List = %SUBST(List : 1 : %LEN(List) - 1);
+
+            Return List;
+        End-Proc;
+
+        Dcl-Proc CloseCursor;
+            EXEC SQL
+                CLOSE C_DOC;
+        End-Proc;
